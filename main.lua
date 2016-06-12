@@ -1,6 +1,5 @@
---TODO: USE HOSTNAME. NEED TO UPDATE TO NEWER FIRMWARE TO DO THIS.
-
-setup = loadfile("setup.lc")
+setup = loadfile("setup.lua")
+-- setup = loadfile("setup.lc")
 setup()
 setup = nil
 
@@ -34,14 +33,14 @@ srv:listen(80, function(conn)
 					return --Invalid payload.
 				end
 
-				length = nil
 
 				local mask = {}
 				payload:sub(3, 6):gsub(".", function(c) table.insert(mask, c:byte()) end)
 				local counter = 0
-				local message = string.gsub(payload:sub(messageStart, -1), ".", function(c) counter = counter+1; return string.char(bit.bxor(c:byte(), mask[((counter-1)%4)+1])) end)
+				local message = string.gsub(payload:sub(messageStart, length+messageStart-1), ".", function(c) counter = counter+1; return string.char(bit.bxor(c:byte(), mask[((counter-1)%4)+1])) end)
 				payload = nil
 				messageStart = nil
+				length = nil
 
 				local messageTable = {}
 				for s in message:gmatch("[^ ]+") do
@@ -64,9 +63,27 @@ srv:listen(80, function(conn)
 					if func then
 						cachedFunctionName = messageTable[1]
 						cachedFunction = func
-						returnText = func(messageTable)-------------------------TODO: USE PCALL!
-					else
+						encodeSuccess, returnText = pcall(func, messageTable)
+						if not encodeSuccess then
+							--Something went wrong when calling the function. Set err so we know there was an error.
+							err = returnText
+							if not err then
+								err = "Unknown"
+							end
+						end
+					end
+
+					if err then
 						returnText = {error = err}
+						print(err)
+						print(messageTable[1])---TODO: REMOVE THESE!
+						local asdf
+						local s = ""
+						for asdf=1, #messageTable[1] do
+							s = s .. " " .. string.byte(messageTable[1], asdf)--------TODO: TEST THIS OUT AND SEE IF IT HELPS! NOTE THAT I ADDED PCALL SO DONT REMOVE ALL CHANGES LATER.
+						end
+						print(s)
+						print("\n")
 					end
 				end
 
