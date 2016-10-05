@@ -1,5 +1,4 @@
-setup = loadfile("setup.lua")
--- setup = loadfile("setup.lc")
+setup = loadfile("setup.lc")
 setup()
 setup = nil
 
@@ -31,7 +30,6 @@ srv:listen(80, function(conn)
 					if length == 126 then
 						length = bit.bor(string.byte(payload:sub(2, 2)), bit.lshift(string.byte(payload:sub(3, 3)), 8))--TODO: TEST THIS!
 						messageStart = 9
-						print("long")
 					elseif length == 127 then
 						--We cannot support messages with lengths longer than two bytes, so we won't try.
 						return
@@ -83,15 +81,6 @@ srv:listen(80, function(conn)
 
 						if err then
 							returnText = {error = err}
-							print(err)
-							print(messageTable[1])---TODO: REMOVE THESE!
-							local asdf
-							local s = ""
-							for asdf=1, #messageTable[1] do
-								s = s .. " " .. string.byte(messageTable[1], asdf)--------TODO: TEST THIS OUT AND SEE IF IT HELPS! NOTE THAT I ADDED PCALL SO DONT REMOVE ALL CHANGES LATER.
-							end
-							print(s)
-							print("\n")
 						end
 					end
 
@@ -214,8 +203,6 @@ srv:listen(80, function(conn)
 		transmitString = transmitString .. "\r\n" .. responsePayload
 
 		--We will send immediatly if we are not sending a file, or we are sending a file and we are not already busy sending a file.
-		-- print("\nresponseIsFile", responseIsFile)
-		-- print("sendingFile", sendingFile)
 		local futureFileTransfer = {}
 		if (responseIsFile == false or (responseIsFile == true and sendingFile == false)) then
 			--If we are starting to send a file, note that.
@@ -225,7 +212,6 @@ srv:listen(80, function(conn)
 					conn:send("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")------TODO: MAYBE THIS SHOULD BE A VARIABLE SINCE WE SHOULD GET THE SAME RESPONSE IF THERE IS AN ERROR ABOVE.
 					return
 				else
-					-- print("Sent header for file to come:", requestPath)
 					sendingFile = true
 					futureFileTransfer["conn"] = conn
 					futureFileTransfer["filename"] = requestPath
@@ -233,10 +219,8 @@ srv:listen(80, function(conn)
 				end
 			end
 			--Send response
-			-- print("sending 1")
 			conn:send(transmitString)
 		else
-			-- print("storing to send file later:", requestPath)
 			--We need to send a file, and one is already being sent. We need to store this for later.
 			futureFileTransfer["filename"] = requestPath
 			futureFileTransfer["header"] = transmitString
@@ -250,7 +234,6 @@ srv:listen(80, function(conn)
 		if sendingFile == true then
 			--We are sending a file
 			if filesToSend[1]["header"] then
-				-- print("sending header")
 				--We need to send the header
 				filesToSend[1]["conn"]:send(filesToSend[1]["header"])
 				--Get rid of things we wont need in the future
@@ -258,12 +241,10 @@ srv:listen(80, function(conn)
 				return
 
 			elseif conn == filesToSend[1]["conn"] then
-				-- print("sending file chunk", filesToSend[1]["filename"])
 				--We need to send a chunk of the file assuming this is the same connection we started with.
 				local needToCloseConnection = false
 				if filesToSend[1]["fileStarted"] == nil then
 					--We need to open the file handle
-					-- print("opening file")
 					if not file.open(filesToSend[1]["filename"]) then
 						--Something went wrong when opening the file. Just close the handle and pop this from the list.
 						needToCloseConnection = true
@@ -292,7 +273,6 @@ srv:listen(80, function(conn)
 					table.remove(filesToSend, 1)
 					if #filesToSend == 0 then
 						--We sent the last thing.
-						-- print("File sending finished")
 						sendingFile = false
 					else
 						--We need to start sending the next thing.
