@@ -18,107 +18,118 @@ srv:listen(80, function(conn)
 					return --Invalid payload.
 				end
 
-				--Start by decoding the length of the message.
-				local length = bit.band(string.byte(payload:sub(2, 2)), 0x7F)
-				local messageStart = 7
-				if length == 126 then
-					length = bit.bor(string.byte(payload:sub(2, 2)), bit.lshift(string.byte(payload:sub(3, 3)), 8))--TODO: TEST THIS! not sure this is correct
-					messageStart = 9
-				elseif length == 127 then
-					--We cannot support messages with lengths longer than two bytes, so we won't try.
+				local opcode = bit.band(string.byte(payload:sub(1,1)), 0xf)
+				if opcode == 0x8 then
+					--Close control frame
+					conn:close()
 					return
-				end
+				elseif opcode == 0x1 then
+					--Text frame
+					--Start by decoding the length of the message.
+					local length = bit.band(string.byte(payload:sub(2, 2)), 0x7F)
+					local messageStart = 7
+					if length == 126 then
+						length = bit.bor(string.byte(payload:sub(2, 2)), bit.lshift(string.byte(payload:sub(3, 3)), 8))--TODO: TEST THIS!
+						messageStart = 9
+						print("long")
+					elseif length == 127 then
+						--We cannot support messages with lengths longer than two bytes, so we won't try.
+						return
+					end
 
-				if #payload < length+3 then
-					return --Invalid payload.
-				end
+					if #payload < length+3 then
+						return --Invalid payload.
+					end
 
 
-				local mask = {}
-				payload:sub(3, 6):gsub(".", function(c) table.insert(mask, c:byte()) end)
-				local counter = 0
-				local message = string.gsub(payload:sub(messageStart, length+messageStart-1), ".", function(c) counter = counter+1; return string.char(bit.bxor(c:byte(), mask[((counter-1)%4)+1])) end)
-				payload = nil
-				messageStart = nil
-				length = nil
+					local mask = {}
+					payload:sub(3, 6):gsub(".", function(c) table.insert(mask, c:byte()) end)
+					local counter = 0
+					local message = string.gsub(payload:sub(messageStart, length+messageStart-1), ".", function(c) counter = counter+1; return string.char(bit.bxor(c:byte(), mask[((counter-1)%4)+1])) end)
+					payload = nil
+					messageStart = nil
+					length = nil
 
-				local messageTable = {}
-				for s in message:gmatch("[^ ]+") do
-					table.insert(messageTable, s)
-				end
+					local messageTable = {}
+					for s in message:gmatch("[^ ]+") do
+						table.insert(messageTable, s)
+					end
 
-				if #messageTable < 1 then
-					return
-				end
+					if #messageTable < 1 then
+						return
+					end
 
-				local returnText
-				if messageTable[1] == cachedFunctionName and cachedFunction ~= nil then
-					returnText = cachedFunction(messageTable)
-				else
-					cachedFunctionName = ""
-					cachedFunction = nil
-					local func
-					local err
-					func, err = loadfile(messageTable[1])
-					if func then
-						cachedFunctionName = messageTable[1]
-						cachedFunction = func
-						encodeSuccess, returnText = pcall(func, messageTable)
-						if not encodeSuccess then
-							--Something went wrong when calling the function. Set err so we know there was an error.
-							err = returnText
-							if not err then
-								err = "Unknown"
+					local returnText
+					if messageTable[1] == cachedFunctionName and cachedFunction ~= nil then
+						returnText = cachedFunction(messageTable)
+					else
+						cachedFunctionName = ""
+						cachedFunction = nil
+						local func
+						local err
+						func, err = loadfile(messageTable[1])
+						if func then
+							cachedFunctionName = messageTable[1]
+							cachedFunction = func
+							encodeSuccess, returnText = pcall(func, messageTable)
+							if not encodeSuccess then
+								--Something went wrong when calling the function. Set err so we know there was an error.
+								err = returnText
+								if not err then
+									err = "Unknown"
+								end
 							end
 						end
-					end
 
-					if err then
-						returnText = {error = err}
-						print(err)
-						print(messageTable[1])---TODO: REMOVE THESE!
-						local asdf
-						local s = ""
-						for asdf=1, #messageTable[1] do
-							s = s .. " " .. string.byte(messageTable[1], asdf)--------TODO: TEST THIS OUT AND SEE IF IT HELPS! NOTE THAT I ADDED PCALL SO DONT REMOVE ALL CHANGES LATER.
+						if err then
+							returnText = {error = err}
+							print(err)
+							print(messageTable[1])---TODO: REMOVE THESE!
+							local asdf
+							local s = ""
+							for asdf=1, #messageTable[1] do
+								s = s .. " " .. string.byte(messageTable[1], asdf)--------TODO: TEST THIS OUT AND SEE IF IT HELPS! NOTE THAT I ADDED PCALL SO DONT REMOVE ALL CHANGES LATER.
+							end
+							print(s)
+							print("\n")
 						end
-						print(s)
-						print("\n")
 					end
+
+					--Get the number of values in the return table
+					local tmp
+					local returnTextSize = 0
+					if returnText then
+						returnText["command"] = messageTable[1]
+						for tmp in pairs(returnText) do
+							returnTextSize = returnTextSize + 1
+						end
+					end
+
+					--Send a response if we have anything to send.
+					if returnTextSize > 0 then
+						local encodeSuccess
+						encodeSuccess, returnText = pcall(cjson.encode, returnText)
+						if not encodeSuccess then
+							returnText = '{"error":"JSON Error"}'
+						end
+
+						if #returnText <= 125 then
+							returnText = string.char(129) .. string.char(#returnText) .. returnText
+						else
+							--Assume the return text is not longer than 65535 as we don't have that much memory.
+							returnText = string.char(129) .. string.char(126) .. string.char(bit.band(bit.rshift(#returnText, 8), 0xFF)) .. string.char(bit.band(#returnText, 0xFF)) .. returnText
+						end
+
+						conn:send(returnText)
+					end
+
+					--Return without handling it as a HTTP request.
+					return
+				else
+					--We got an opcode we don't recognize or cannot handle.
+					print("Unknown opcode:", opcode)
+					return
 				end
-
-				--Get the number of values in the return table
-				local tmp
-				local returnTextSize = 0
-				if returnText then
-					returnText["command"] = messageTable[1]
-					for tmp in pairs(returnText) do
-						returnTextSize = returnTextSize + 1
-					end
-				end
-
-				--Send a response if we have anything to send.
-				if returnTextSize > 0 then
-					local encodeSuccess
-					encodeSuccess, returnText = pcall(cjson.encode, returnText)
-					if not encodeSuccess then
-						returnText = '{"error":"JSON Error"}'
-					end
-
-					if #returnText <= 125 then
-						returnText = string.char(129) .. string.char(#returnText) .. returnText
-					else 
-						--Assume the return text is not longer than 65535 as we don't have that much memory.
-						---------------TODO: TEST ME!
-						returnText = string.char(129) .. string.char(126) .. string.char(bit.band(bit.rshift(#returnText, 8)), 0xFF) .. string.char(bit.band(#returnText, 0xFF)) .. returnText
-					end
-
-					conn:send(returnText)------------------------------TODO: ADD SUPPORT FOR THE SPECIAL MESSAGES SUCH AS DISCONNECT MAYBE
-				end
-
-
-				--Return without handling it as a HTTP request.
-				return
 			end
 		end
 
