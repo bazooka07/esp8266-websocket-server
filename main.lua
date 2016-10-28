@@ -6,6 +6,7 @@ setup = nil
 local srv = net.createServer(net.TCP, 10)
 
 srv:listen(80, function(conn)
+	-- print("connect!")
 	conn:on("receive", function(conn, payload)
 		--First see if this is a websocket.
 		local i, v
@@ -207,16 +208,11 @@ srv:listen(80, function(conn)
 		if (responseIsFile == false or (responseIsFile == true and sendingFile == false)) then
 			--If we are starting to send a file, note that.
 			if responseIsFile == true then
-				if not file.open(requestPath) then
-					--Something bad happened when trying to open the file. Send an error instead
-					conn:send("HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n")------TODO: MAYBE THIS SHOULD BE A VARIABLE SINCE WE SHOULD GET THE SAME RESPONSE IF THERE IS AN ERROR ABOVE.
-					return
-				else
-					sendingFile = true
-					futureFileTransfer["conn"] = conn
-					futureFileTransfer["filename"] = requestPath
-					table.insert(filesToSend, futureFileTransfer)
-				end
+				-- print("added to list", requestPath)
+				sendingFile = true
+				futureFileTransfer["conn"] = conn
+				futureFileTransfer["filename"] = requestPath
+				table.insert(filesToSend, futureFileTransfer)
 			end
 			--Send response
 			conn:send(transmitString)
@@ -232,6 +228,7 @@ srv:listen(80, function(conn)
 
 	conn:on("sent", function(conn, payload)
 		if sendingFile == true then
+			-- print("s")
 			--We are sending a file
 			if filesToSend[1]["header"] then
 				--We need to send the header
@@ -245,6 +242,7 @@ srv:listen(80, function(conn)
 				local needToCloseConnection = false
 				if filesToSend[1]["fileStarted"] == nil then
 					--We need to open the file handle
+					-- print("late sending", filesToSend[1]["filename"])
 					if not file.open(filesToSend[1]["filename"]) then
 						--Something went wrong when opening the file. Just close the handle and pop this from the list.
 						needToCloseConnection = true
