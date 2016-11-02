@@ -40,7 +40,6 @@ srv:listen(80, function(conn)
 						return --Invalid payload.
 					end
 
-
 					local mask = {}
 					payload:sub(3, 6):gsub(".", function(c) table.insert(mask, c:byte()) end)
 					local counter = 0
@@ -51,7 +50,11 @@ srv:listen(80, function(conn)
 
 					local messageTable = {}
 					for s in message:gmatch("[^ ]+") do
-						table.insert(messageTable, s)
+						--Convert null characters to spaces and add it to message table.
+						local _
+						local parameter
+						parameter, _ = string.gsub(s, "\31", " ")
+						table.insert(messageTable, parameter)
 					end
 
 					if #messageTable < 1 then
