@@ -2,8 +2,16 @@ setup = loadfile("setup.lc")
 setup()
 setup = nil
 
+--TODO: Remove long running file handles. This should allow for multiple file transmissions at once and allow for other processes to open files.
+
+--FIFO list for sending files.
+filesToSend = {}
+
+--Stores handles to websocket connections.
+webSockets = {}
+
 --Set up the server
-local srv = net.createServer(net.TCP, 10)
+local srv = net.createServer(net.TCP, CONN_TIMEOUT)
 
 srv:listen(80, function(conn)
 	-- print("connect!")
@@ -208,11 +216,10 @@ srv:listen(80, function(conn)
 
 		--We will send immediatly if we are not sending a file, or we are sending a file and we are not already busy sending a file.
 		local futureFileTransfer = {}
-		if (responseIsFile == false or (responseIsFile == true and sendingFile == false)) then
+		if (responseIsFile == false or (responseIsFile == true and filesToSend[1] == nil)) then
 			--If we are starting to send a file, note that.
 			if responseIsFile == true then
 				-- print("added to list", requestPath)
-				sendingFile = true
 				futureFileTransfer["conn"] = conn
 				futureFileTransfer["filename"] = requestPath
 				table.insert(filesToSend, futureFileTransfer)
@@ -230,7 +237,7 @@ srv:listen(80, function(conn)
 
 
 	conn:on("sent", function(conn, payload)
-		if sendingFile == true then
+		if filesToSend[1] then
 			-- print("s")
 			--We are sending a file
 			if filesToSend[1]["header"] then
@@ -248,6 +255,8 @@ srv:listen(80, function(conn)
 					-- print("late sending", filesToSend[1]["filename"])
 					if not file.open(filesToSend[1]["filename"]) then
 						--Something went wrong when opening the file. Just close the handle and pop this from the list.
+						--The only way this should be able to happen is if the file was removed after we checked for the
+						--file's existance and before starting to send it.
 						needToCloseConnection = true
 					else
 						filesToSend[1]["fileStarted"] = true
@@ -272,10 +281,7 @@ srv:listen(80, function(conn)
 					file.close()
 					-- print("closing connection for ", filesToSend[1]["filename"])
 					table.remove(filesToSend, 1)
-					if #filesToSend == 0 then
-						--We sent the last thing.
-						sendingFile = false
-					else
+					if filesToSend[1] then
 						--We need to start sending the next thing.
 						filesToSend[1]["conn"]:send(filesToSend[1]["header"])
 						filesToSend[1]["header"] = nil
@@ -305,11 +311,24 @@ srv:listen(80, function(conn)
 	conn:on("disconnection", function(conn)
 		-- print("disconnect!")
 		local i, v
+		--If this is a websocket connection, remove reference to it from the webSockets table.
 		for i, v in pairs(webSockets) do
 			if conn == v then
-				-- print("Closing socket!")
 				table.remove(webSockets, i)
 				break
+			end
+		end
+
+		--If we have queued up things to send on this connection, remove them.
+		for i, v in pairs(filesToSend) do
+			if conn == v["conn"] then
+				--We found something queued to be sent on this connection. If we have already opened a file handle for it, close it.
+				if i == 1 and v["fileStarted"] then
+					file.close()
+				end
+
+				--Remove reference to this transmission.
+				table.remove(filesToSend, i)
 			end
 		end
 	end)
