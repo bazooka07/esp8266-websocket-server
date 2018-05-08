@@ -1,20 +1,42 @@
-setup = loadfile("setup.lc")
-setup()
-setup = nil
-
 --TODO: Remove long running file handles. This should allow for multiple file transmissions at once and allow for other processes to open files.
 
+local connTimeout, restrictedFiles, fileTXBufferSize, contentTypeLookup = ...
+
+
+if fileTXBufferSize == nil then
+	--Defines the maximum number of bytes transmitted at a time.
+	fileTXBufferSize = 1024
+end
+
+if connTimeout == nil then
+	--Defines the number of seconds before a connection with no trafic gets disconnected.
+	connTimeout = 5
+end
+
+--Set up restricted files excluding .lua and .lc files. Those are already restricted.
+if restrictedFiles == nil then
+	restrictedFiles = {}
+end
+
+if contentTypeLookup == nil then
+	contentTypeLookup =	{	css = "text/css",
+							ico = "image/x-icon",
+							html = "text/html; charset=utf-8",
+							js = "application/javascript"
+					 	}
+end
+
+
 --FIFO list for sending files.
-filesToSend = {}
+local filesToSend = {}
 
 --Stores handles to websocket connections.
-webSockets = {}
+local webSockets = {}
 
 --Set up the server
-local srv = net.createServer(net.TCP, CONN_TIMEOUT)
+local srv = net.createServer(net.TCP, connTimeout)
 
 srv:listen(80, function(conn)
-	-- print("connect!")
 	conn:on("receive", function(conn, payload)
 		--First see if this is a websocket.
 		local i, v
@@ -37,7 +59,7 @@ srv:listen(80, function(conn)
 					local length = bit.band(string.byte(payload:sub(2, 2)), 0x7F)
 					local messageStart = 7
 					if length == 126 then
-						length = bit.bor(string.byte(payload:sub(2, 2)), bit.lshift(string.byte(payload:sub(3, 3)), 8))--TODO: TEST THIS!
+						length = bit.bor(string.byte(payload:sub(2, 2)), bit.lshift(string.byte(payload:sub(3, 3)), 8))
 						messageStart = 9
 					elseif length == 127 then
 						--We cannot support messages with lengths longer than two bytes, so we won't try.
@@ -128,7 +150,6 @@ srv:listen(80, function(conn)
 					return
 				else
 					--We got an opcode we don't recognize or cannot handle.
-					print("Unknown opcode:", opcode)
 					return
 				end
 			end
@@ -163,7 +184,7 @@ srv:listen(80, function(conn)
 						--If we got here, we were able to parse everything just fine.
 						--See if the file exists by getting the file size
 						local fileSize = file.list()[requestPath]
-						if fileSize ~= nil and RESTRICTED_FILES[requestPath] == nil and requestType == "GET" then
+						if fileSize ~= nil and restrictedFiles[requestPath] == nil and requestType == "GET" then
 							--See if this is a websocket request
 							local websocketKey = string.match(payload, "Sec%-WebSocket%-Key: (.-)\r\n")
 							payload = nil
@@ -219,7 +240,6 @@ srv:listen(80, function(conn)
 		if (responseIsFile == false or (responseIsFile == true and filesToSend[1] == nil)) then
 			--If we are starting to send a file, note that.
 			if responseIsFile == true then
-				-- print("added to list", requestPath)
 				futureFileTransfer["conn"] = conn
 				futureFileTransfer["filename"] = requestPath
 				table.insert(filesToSend, futureFileTransfer)
@@ -238,7 +258,6 @@ srv:listen(80, function(conn)
 
 	conn:on("sent", function(conn, payload)
 		if filesToSend[1] then
-			-- print("s")
 			--We are sending a file
 			if filesToSend[1]["header"] then
 				--We need to send the header
@@ -252,7 +271,6 @@ srv:listen(80, function(conn)
 				local needToCloseConnection = false
 				if filesToSend[1]["fileStarted"] == nil then
 					--We need to open the file handle
-					-- print("late sending", filesToSend[1]["filename"])
 					if not file.open(filesToSend[1]["filename"]) then
 						--Something went wrong when opening the file. Just close the handle and pop this from the list.
 						--The only way this should be able to happen is if the file was removed after we checked for the
@@ -265,7 +283,7 @@ srv:listen(80, function(conn)
 
 				--We will send a chunk of the file assuming something didn't go wrong earlier
 				if needToCloseConnection == false then
-					local fileChunk = file.read(FILE_TRANSMIT_BUFFER_SIZE)
+					local fileChunk = file.read(fileTXBufferSize)
 					if fileChunk == nil then
 						--We finished sending the file.
 						needToCloseConnection = true
@@ -279,7 +297,6 @@ srv:listen(80, function(conn)
 				if needToCloseConnection then
 					conn:close()  -- Is this safe? I think its not allowed, but it seems to work.
 					file.close()
-					-- print("closing connection for ", filesToSend[1]["filename"])
 					table.remove(filesToSend, 1)
 					if filesToSend[1] then
 						--We need to start sending the next thing.
@@ -303,13 +320,11 @@ srv:listen(80, function(conn)
 		end
 
 		--If we got here, this is not a websocket. We should close it.
-		-- print("Closing connection")
 		conn:close()
 
 	end)
 
 	conn:on("disconnection", function(conn)
-		-- print("disconnect!")
 		local i, v
 		--If this is a websocket connection, remove reference to it from the webSockets table.
 		for i, v in pairs(webSockets) do
@@ -333,3 +348,5 @@ srv:listen(80, function(conn)
 		end
 	end)
 end)
+
+return srv
