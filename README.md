@@ -28,8 +28,8 @@ websocket.send("TestCommand.lua Param\1With\1fSpaces ParamWithoutSpaces")
 
 ## Server Customization
 This webserver supports four parameters which, if not defined or defined to nil, will take default values.
-Parameter 1) connTimeout: Number of seconds without any communication before the server drops the connection. Defaults to 5.
-Parameter 2) restrictedFiles: A list of files which cannot be retrieved by a GET request. Note that .lua and .lc may not be retrieved by a GET request. Defaults to no restrictions.
-Parameter 3) fileTXBufferSize: The max number of bytes sent at a time as a response to a GET request. Default 1024.
-Parameter 4) contentTypeLookup: A table indicating the content type for each type of file that can be loaded by a GET request. Default {css="text/css", ico = "image/x-icon", html = "text/html; charset=utf-8", js = "application/javascript"}
+1) connTimeout: Number of seconds without any communication before the server drops the connection. Defaults to 5.
+2) restrictedFiles: A list of files which cannot be retrieved by a GET request. Note that .lua and .lc may not be retrieved by a GET request. Defaults to no restrictions.
+3) fileTXBufferSize: The max number of bytes sent at a time as a response to a GET request. Default 1024.
+4) contentTypeLookup: A table indicating the content type for each type of file that can be loaded by a GET request. Default {css="text/css", ico = "image/x-icon", html = "text/html; charset=utf-8", js = "application/javascript"}
 
