@@ -10,6 +10,8 @@ The websocket command can either return nothing or a table. If it returns a tabl
 
 In order to reduce the memory footprint, this webserver has been made very simple. As a result, error codes returned are very limited.
 
+NOTE: The webserver currently does not explicitly use file handles. You should be careful if you use file IO in the websocket command scripts.
+
 ## Example Usage
 ### Server Initialization
 loadfile("WebsocketGetServer.lua")()
