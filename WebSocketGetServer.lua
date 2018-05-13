@@ -1,3 +1,4 @@
+--TODO: USE CALLABLE SYNTAX FOR RUNNING SCRIPTS!
 --TODO: Remove long running file handles. This should allow for multiple file transmissions at once and allow for other processes to open files.
 
 local connTimeout, restrictedFiles, fileTXBufferSize, contentTypeLookup = ...
@@ -23,7 +24,7 @@ if contentTypeLookup == nil then
 							ico = "image/x-icon",
 							html = "text/html; charset=utf-8",
 							js = "application/javascript"
-					 	}
+						}
 end
 
 
