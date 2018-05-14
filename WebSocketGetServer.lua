@@ -32,7 +32,7 @@ end
 local filesToSend = {}
 
 --Stores handles to websocket connections.
-local webSockets = {}
+websocketHandles = {}
 
 --Set up the server
 local srv = net.createServer(net.TCP, connTimeout)
@@ -41,7 +41,7 @@ srv:listen(80, function(conn)
 	conn:on("receive", function(conn, payload)
 		--First see if this is a websocket.
 		local i, v
-		for i, v in pairs(webSockets) do
+		for i, v in pairs(websocketHandles) do
 			if conn == v then
 				--This connection is a websocket.
 				--We need to decode the message.
@@ -132,7 +132,7 @@ srv:listen(80, function(conn)
 					--Send a response if we have anything to send.
 					if returnTextSize > 0 then
 						local encodeSuccess
-						encodeSuccess, returnText = pcall(cjson.encode, returnText)
+						encodeSuccess, returnText = pcall(sjson.encode, returnText)
 						if not encodeSuccess then
 							returnText = '{"error":"JSON Error"}'
 						end
@@ -196,7 +196,7 @@ srv:listen(80, function(conn)
 								responsePairs["Sec-WebSocket-Accept"] = crypto.toBase64(crypto.hash("sha1", websocketKey .. "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 								responseStatus = "101 Switching Protocols"
 								responsePayload = ""
-								table.insert(webSockets, conn)
+								table.insert(websocketHandles, conn)
 								responseSuccess = true
 
 							else
@@ -313,7 +313,7 @@ srv:listen(80, function(conn)
 		--If we got here, there is nothing else to send on this socket.
 		--If it is a websocket, keep the socket open. Otherwise, we need to close it.
 		local i, v
-		for i, v in pairs(webSockets) do
+		for i, v in pairs(websocketHandles) do
 			if conn == v then
 				--This connection is a websocket. Return without closing the socket.
 				return
@@ -327,10 +327,10 @@ srv:listen(80, function(conn)
 
 	conn:on("disconnection", function(conn)
 		local i, v
-		--If this is a websocket connection, remove reference to it from the webSockets table.
-		for i, v in pairs(webSockets) do
+		--If this is a websocket connection, remove reference to it from the websocketHandles table.
+		for i, v in pairs(websocketHandles) do
 			if conn == v then
-				table.remove(webSockets, i)
+				table.remove(websocketHandles, i)
 				break
 			end
 		end
