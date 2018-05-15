@@ -34,6 +34,19 @@ local filesToSend = {}
 --Stores handles to websocket connections.
 websocketHandles = {}
 
+
+function SendWebsocketMessage(conn, message)
+	if #message <= 125 then
+		message = string.char(129) .. string.char(#message) .. message
+	else
+		--Assume the return text is not longer than 65535 as we don't have that much memory.
+		message = string.char(129) .. string.char(126) .. string.char(bit.band(bit.rshift(#message, 8), 0xFF)) .. string.char(bit.band(#message, 0xFF)) .. message
+	end
+
+	conn:send(message)
+end
+
+
 --Set up the server
 local srv = net.createServer(net.TCP, connTimeout)
 
@@ -137,14 +150,7 @@ srv:listen(80, function(conn)
 							returnText = '{"error":"JSON Error"}'
 						end
 
-						if #returnText <= 125 then
-							returnText = string.char(129) .. string.char(#returnText) .. returnText
-						else
-							--Assume the return text is not longer than 65535 as we don't have that much memory.
-							returnText = string.char(129) .. string.char(126) .. string.char(bit.band(bit.rshift(#returnText, 8), 0xFF)) .. string.char(bit.band(#returnText, 0xFF)) .. returnText
-						end
-
-						conn:send(returnText)
+						SendWebsocketMessage(conn, returnText)
 					end
 
 					--Return without handling it as a HTTP request.
