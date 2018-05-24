@@ -1,8 +1,13 @@
---TODO: USE CALLABLE SYNTAX FOR RUNNING SCRIPTS!
+--TODO: Note that this does not currently handle websocket closing correctly. There is a todo below for this.
 --TODO: Remove long running file handles. This should allow for multiple file transmissions at once and allow for other processes to open files.
+--Note that the onConnect and onClose should not send messages. onConnect can queue up a message for later (I think).
 
-local connTimeout, restrictedFiles, fileTXBufferSize, contentTypeLookup = ...
+local websocketCallbacks, connTimeout, restrictedFiles, fileTXBufferSize, contentTypeLookup = ...
 
+if websocketCallbacks == nil then
+	--No callbacks by default. Callback options are "onConnect", "onReceive", and "onClose".
+	websocketCallbacks = {}
+end
 
 if fileTXBufferSize == nil then
 	--Defines the maximum number of bytes transmitted at a time.
@@ -11,7 +16,7 @@ end
 
 if connTimeout == nil then
 	--Defines the number of seconds before a connection with no trafic gets disconnected.
-	connTimeout = 5
+	connTimeout = 60
 end
 
 --Set up restricted files excluding .lua and .lc files. Those are already restricted.
@@ -47,6 +52,10 @@ function SendWebsocketMessage(conn, message)
 end
 
 
+
+
+
+
 --Set up the server
 local srv = net.createServer(net.TCP, connTimeout)
 
@@ -65,7 +74,7 @@ srv:listen(80, function(conn)
 				local opcode = bit.band(string.byte(payload:sub(1,1)), 0xf)
 				if opcode == 0x8 then
 					--Close control frame
-					conn:close()
+					-----------------------------------TODO: NEED TO SEND CLOSE RESPONSE!
 					return
 				elseif opcode == 0x1 then
 					--Text frame
@@ -87,70 +96,12 @@ srv:listen(80, function(conn)
 					local mask = {}
 					payload:sub(3, 6):gsub(".", function(c) table.insert(mask, c:byte()) end)
 					local counter = 0
-					local message = string.gsub(payload:sub(messageStart, length+messageStart-1), ".", function(c) counter = counter+1; return string.char(bit.bxor(c:byte(), mask[((counter-1)%4)+1])) end)
-					payload = nil
+					payload = string.gsub(payload:sub(messageStart, length+messageStart-1), ".", function(c) counter = counter+1; return string.char(bit.bxor(c:byte(), mask[((counter-1)%4)+1])) end)
 					messageStart = nil
 					length = nil
 
-					local messageTable = {}
-					for s in message:gmatch("[^ ]+") do
-						--Convert null characters to spaces and add it to message table.
-						local _
-						local parameter
-						parameter, _ = string.gsub(s, "\31", " ")
-						table.insert(messageTable, parameter)
-					end
-
-					if #messageTable < 1 then
-						return
-					end
-
-					local returnText
-					if messageTable[1] == cachedFunctionName and cachedFunction ~= nil then
-						returnText = cachedFunction(messageTable)
-					else
-						cachedFunctionName = ""
-						cachedFunction = nil
-						local func
-						local err
-						func, err = loadfile(messageTable[1])
-						if func then
-							cachedFunctionName = messageTable[1]
-							cachedFunction = func
-							encodeSuccess, returnText = pcall(func, messageTable)
-							if not encodeSuccess then
-								--Something went wrong when calling the function. Set err so we know there was an error.
-								err = returnText
-								if not err then
-									err = "Unknown"
-								end
-							end
-						end
-
-						if err then
-							returnText = {error = err}
-						end
-					end
-
-					--Get the number of values in the return table
-					local tmp
-					local returnTextSize = 0
-					if returnText then
-						returnText["command"] = messageTable[1]
-						for tmp in pairs(returnText) do
-							returnTextSize = returnTextSize + 1
-						end
-					end
-
-					--Send a response if we have anything to send.
-					if returnTextSize > 0 then
-						local encodeSuccess
-						encodeSuccess, returnText = pcall(sjson.encode, returnText)
-						if not encodeSuccess then
-							returnText = '{"error":"JSON Error"}'
-						end
-
-						SendWebsocketMessage(conn, returnText)
+					if websocketCallbacks["onReceive"] then
+						websocketCallbacks["onReceive"](conn, payload)
 					end
 
 					--Return without handling it as a HTTP request.
@@ -203,6 +154,12 @@ srv:listen(80, function(conn)
 								responseStatus = "101 Switching Protocols"
 								responsePayload = ""
 								table.insert(websocketHandles, conn)
+
+								--Call the onConnect callback if it exists.
+								if websocketCallbacks["onConnect"] then
+									websocketCallbacks["onConnect"](conn)
+								end
+
 								responseSuccess = true
 
 							else
@@ -228,7 +185,7 @@ srv:listen(80, function(conn)
 
 		if responseSuccess == false then
 			--Something went wrong. It would be nice to give more detailed response codes, but we don't have much memory.
-			responseStatus = "500 Internal Server Error"
+			responseStatus = "404 Not Found"
 			responsePayload = responseStatus
 		end
 
@@ -263,6 +220,7 @@ srv:listen(80, function(conn)
 	end)
 
 
+
 	conn:on("sent", function(conn, payload)
 		if filesToSend[1] then
 			--We are sending a file
@@ -275,25 +233,25 @@ srv:listen(80, function(conn)
 
 			elseif conn == filesToSend[1]["conn"] then
 				--We need to send a chunk of the file assuming this is the same connection we started with.
-				local needToCloseConnection = false
+				local transmitFinished = false
 				if filesToSend[1]["fileStarted"] == nil then
 					--We need to open the file handle
 					if not file.open(filesToSend[1]["filename"]) then
 						--Something went wrong when opening the file. Just close the handle and pop this from the list.
 						--The only way this should be able to happen is if the file was removed after we checked for the
 						--file's existance and before starting to send it.
-						needToCloseConnection = true
+						transmitFinished = true
 					else
 						filesToSend[1]["fileStarted"] = true
 					end
 				end
 
 				--We will send a chunk of the file assuming something didn't go wrong earlier
-				if needToCloseConnection == false then
+				if transmitFinished == false then
 					local fileChunk = file.read(fileTXBufferSize)
 					if fileChunk == nil then
 						--We finished sending the file.
-						needToCloseConnection = true
+						transmitFinished = true
 					else
 						conn:send(fileChunk)
 					end
@@ -301,8 +259,8 @@ srv:listen(80, function(conn)
 
 				--If the connection is finished for any reason, close it, close the file 
 				--handle, and remove the transfer entry from filesToSend.
-				if needToCloseConnection then
-					conn:close()  -- Is this safe? I think its not allowed, but it seems to work.
+				if transmitFinished then
+					--TODO: Do we need to close connection?
 					file.close()
 					table.remove(filesToSend, 1)
 					if filesToSend[1] then
@@ -325,11 +283,9 @@ srv:listen(80, function(conn)
 				return
 			end
 		end
-
-		--If we got here, this is not a websocket. We should close it.
-		conn:close()
-
 	end)
+
+
 
 	conn:on("disconnection", function(conn)
 		local i, v
@@ -337,6 +293,12 @@ srv:listen(80, function(conn)
 		for i, v in pairs(websocketHandles) do
 			if conn == v then
 				table.remove(websocketHandles, i)
+
+				--Call the callback.
+				if websocketCallbacks["onClose"] then
+					websocketCallbacks["onClose"](conn)
+				end
+
 				break
 			end
 		end
@@ -354,6 +316,7 @@ srv:listen(80, function(conn)
 			end
 		end
 	end)
+
 end)
 
 return srv
