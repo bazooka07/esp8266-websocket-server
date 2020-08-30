@@ -150,7 +150,8 @@ srv:listen(80, function(conn)
 								--This is a websocket request
 								responsePairs["Upgrade"] = "websocket"
 								responsePairs["Connection"] = "Upgrade"
-								responsePairs["Sec-WebSocket-Accept"] = crypto.toBase64(crypto.hash("sha1", websocketKey .. "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+								-- responsePairs["Sec-WebSocket-Accept"] = crypto.toBase64(crypto.hash("sha1", websocketKey .. "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
+								responsePairs["Sec-WebSocket-Accept"] = encoder.toBase64(crypto.hash("sha1", websocketKey .. "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 								responseStatus = "101 Switching Protocols"
 								responsePayload = ""
 								table.insert(websocketHandles, conn)
@@ -257,7 +258,7 @@ srv:listen(80, function(conn)
 					end
 				end
 
-				--If the connection is finished for any reason, close it, close the file 
+				--If the connection is finished for any reason, close it, close the file
 				--handle, and remove the transfer entry from filesToSend.
 				if transmitFinished then
 					--TODO: Do we need to close connection?
