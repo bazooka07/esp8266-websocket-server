@@ -28,6 +28,10 @@ if contentTypeLookup == nil then
 	contentTypeLookup =	{	css = "text/css",
 							ico = "image/x-icon",
 							html = "text/html; charset=utf-8",
+							jpg = "image/jpeg",
+							png = "image/png",
+							svg = "image/svg+xml",
+							txt = "text/plain; charset=utf-8"
 							js = "application/javascript"
 						}
 end
