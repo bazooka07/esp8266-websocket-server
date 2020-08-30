@@ -28,6 +28,10 @@ if contentTypeLookup == nil then
 	contentTypeLookup =	{	css = "text/css",
 							ico = "image/x-icon",
 							html = "text/html; charset=utf-8",
+							jpg = "image/jpeg",
+							png = "image/png",
+							svg = "image/svg+xml",
+							txt = "text/plain; charset=utf-8"
 							js = "application/javascript"
 						}
 end
@@ -257,7 +261,7 @@ srv:listen(80, function(conn)
 					end
 				end
 
-				--If the connection is finished for any reason, close it, close the file 
+				--If the connection is finished for any reason, close it, close the file
 				--handle, and remove the transfer entry from filesToSend.
 				if transmitFinished then
 					--TODO: Do we need to close connection?
