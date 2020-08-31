@@ -114,9 +114,10 @@ srv:listen(80, function(conn)
 		end
 
 		--Set these up in case we somehow forget to set them later.
-		local responsePairs = {}
-		responsePairs["Content-Type"] = "text/html"
-		responsePairs["Connection"] = "close"
+		local responsePairs = {
+			"Content-Type" = "application/octet-stream",
+			responsePairs = "close"
+		}
 
 		local responseStatus
 		local responsePayload
@@ -124,12 +125,14 @@ srv:listen(80, function(conn)
 		local responseIsFile = false
 
 		local requestPath
+		local filename
+		local isGizzed = false
 		local responseSuccess = false
 		if payload ~= nil then
 			local requestLine = string.match(payload, "^([^\n\r]*)")
 			if requestLine ~= nil then
 				local requestType = string.match(requestLine, "^([^ ]*)")
-				if requestType ~= nil then
+				if requestType == "GET" then
 					requestPath = string.match(requestLine, requestType .. " /([^? ]*)[^ ]- HTTP/1%.1")
 					requestLine = nil
 					--Convert root path to index.html
@@ -138,11 +141,16 @@ srv:listen(80, function(conn)
 						requestPath = "index.html"
 					end
 
-					if requestPath ~= nil then
+					if requestPath and not restrictedFiles[requestPath] then
 						--If we got here, we were able to parse everything just fine.
 						--See if the file exists by getting the file size
-						local fileSize = file.list()[requestPath]
-						if fileSize ~= nil and restrictedFiles[requestPath] == nil and requestType == "GET" then
+						filename = requestPath
+						if not file.exists(filename) then
+							filename = filename .. ".gz"
+							isGizzed = true
+						end
+						local fileSize = file.list()[filename]
+						if fileSize ~= nil then
 							--See if this is a websocket request
 							local websocketKey = string.match(payload, "Sec%-WebSocket%-Key: (.-)\r\n")
 							payload = nil
@@ -152,38 +160,38 @@ srv:listen(80, function(conn)
 								responsePairs["Connection"] = "Upgrade"
 								responsePairs["Sec-WebSocket-Accept"] = crypto.toBase64(crypto.hash("sha1", websocketKey .. "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"))
 								responseStatus = "101 Switching Protocols"
-								responsePayload = ""
 								table.insert(websocketHandles, conn)
 
 								--Call the onConnect callback if it exists.
 								if websocketCallbacks["onConnect"] then
 									websocketCallbacks["onConnect"](conn)
 								end
-
-								responseSuccess = true
-
 							else
 								--This is a standard get request
 								--We just need to send the file that requestPath points to.
 								responsePairs["Content-Length"] = fileSize
 								responseStatus = 200
-								responsePayload = ""
 
 								local potentialContentType = contentTypeLookup[string.match(requestPath, ".*%.(.-)$")]
-								if potentialContentType ~= nil then
-									--If we don't have this file type in our lookup table, try text/html.
+								if potentialContentType then
 									responsePairs["Content-Type"] = potentialContentType
 								end
+								responsePairs["Cache-Control"] = "private, max-age=84400"
+								if isGizzed then
+									responsePairs["Content-Encoding"] = "gzip"
+								end
 								responseIsFile = true
-								responseSuccess = true
 							end
+
+							responsePayload = ""
+							responseSuccess = true
 						end
 					end
 				end
 			end
 		end
 
-		if responseSuccess == false then
+		if not responseSuccess then
 			--Something went wrong. It would be nice to give more detailed response codes, but we don't have much memory.
 			responseStatus = "404 Not Found"
 			responsePayload = responseStatus
@@ -200,22 +208,16 @@ srv:listen(80, function(conn)
 		transmitString = transmitString .. "\r\n" .. responsePayload
 
 		--We will send immediatly if we are not sending a file, or we are sending a file and we are not already busy sending a file.
-		local futureFileTransfer = {}
 		if (responseIsFile == false or (responseIsFile == true and filesToSend[1] == nil)) then
 			--If we are starting to send a file, note that.
 			if responseIsFile == true then
-				futureFileTransfer["conn"] = conn
-				futureFileTransfer["filename"] = requestPath
-				table.insert(filesToSend, futureFileTransfer)
+				table.insert(filesToSend, {conn= conn, filename = filename})
 			end
 			--Send response
 			conn:send(transmitString)
 		else
 			--We need to send a file, and one is already being sent. We need to store this for later.
-			futureFileTransfer["filename"] = requestPath
-			futureFileTransfer["header"] = transmitString
-			futureFileTransfer["conn"] = conn
-			table.insert(filesToSend, futureFileTransfer)
+			table.insert(filesToSend, {conn= conn, filename = filename, header = transmitString})
 		end
 	end)
 
@@ -257,7 +259,7 @@ srv:listen(80, function(conn)
 					end
 				end
 
-				--If the connection is finished for any reason, close it, close the file 
+				--If the connection is finished for any reason, close it, close the file
 				--handle, and remove the transfer entry from filesToSend.
 				if transmitFinished then
 					--TODO: Do we need to close connection?
