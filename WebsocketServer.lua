@@ -25,15 +25,16 @@ if restrictedFiles == nil then
 end
 
 if contentTypeLookup == nil then
-	contentTypeLookup =	{	css = "text/css",
-							ico = "image/x-icon",
-							html = "text/html; charset=utf-8",
-							jpg = "image/jpeg",
-							png = "image/png",
-							svg = "image/svg+xml",
-							txt = "text/plain; charset=utf-8"
-							js = "application/javascript"
-						}
+	contentTypeLookup =	{
+		css = "text/css",
+		ico = "image/x-icon",
+		html = "text/html; charset=utf-8",
+		jpg = "image/jpeg",
+		png = "image/png",
+		svg = "image/svg+xml",
+		txt = "text/plain; charset=utf-8",
+		js = "application/javascript"
+	}
 end
 
 
@@ -119,7 +120,7 @@ srv:listen(80, function(conn)
 
 		--Set these up in case we somehow forget to set them later.
 		local responsePairs = {}
-		responsePairs["Content-Type"] = "text/html"
+		responsePairs["Content-Type"] = "application/octet-stream"
 		responsePairs["Connection"] = "close"
 
 		local responseStatus
