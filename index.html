@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta http-equiv="X-UA-Compatible" content="IE=Edge" />
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>Test</title>
+	<link rel="style.css" href="style.css" />
+</head><body>
+	<header>
+		<h1>ESP 8266</h1>
+	</header>
+	<nav>
+		<label for="nav-id">Menu</label>
+		<input class="toggle" id="nav-id" type="checkbox" />
+		<ul>
+			<li>Menu 1</li>
+			<li>Menu 2</li>
+		</ul>
+	</nav>
+	<aside id="aside">
+	</aside>
+	<section id="main">
+		<p>Date : <span id="time"></span> <button type="button" id="setTime">Set time</button></p>
+		<p>Temp. <span id="temp"></span></p>
+		<p>Humid. <span id="humid"></span></p>
+		<p><button type="button" id="relayBtn">Relay</button> <span class="output" id="relay">&nbsp;</span></p>
+		<p>Led <span class="output" id="led">&nbsp;</span></p>
+	</section>
+	<footer>
+	</footer>
+	<script src="script.js"></script>
+</body></html>

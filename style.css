@@ -1,0 +1,4 @@
+input.toggle { display: none; }
+h1 { color: firebrick; }
+span.output { background-color: lime; }
+span.output.active { background-color: red; }
